@@ -1,48 +1,82 @@
+from __future__ import annotations
 import hashlib
 import datetime
 import logging
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 
 import pyfastaq
 
 
-def decode(x):
+def decode(x: str | bytes) -> str:
     try:
         s = x.decode()
     except:
         return x
     return s
 
+    
+def syscall(command: str | list[str], **run_kws) -> subprocess.CompletedProcess:
+    """Run command via subprocess.run
+    
+    Parameters
+    ---------
+    command: str or list of strings. Passed to subprocess.run
+    **run_kws: Additonal kws to pass to subprocess.run. Defaults:
+        - stderr: subprocess.PIPE
+        - stdout: subprocess.PIPE
+        - universal_newlines: True
+        - capture_output: True
+        - text: True
+    
+    Returns
+    -------
+    CompletedProcess
+        The run process
+    """
+    logging.info("Run command: %s", str(command))
 
-def syscall(command):
-    logging.info(f"Run command: {command}")
-    completed_process = subprocess.run(
-        command,
-        shell=True,
-        stderr=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        universal_newlines=True,
-    )
-    logging.info(f"Return code: {completed_process.returncode}")
-    if completed_process.returncode != 0:
+    if isinstance(command, str):
+        command = shlex.split(command)
+    
+    # path of program. See python subprocess.Popen doc for details
+    command[0] = shutil.which(command[0])
+    logging.debug("Program: %s", command[0])
+
+    # set defaults
+    run_kws = dict(stderr=subprocess.PIPE,
+                   stdout=subprocess.PIPE,
+                   capture_output=True,
+                   text=True,
+                   universal_newlines=True,
+                   ) | run_kws
+
+    proc = subprocess.run(command, **run_kws)
+        
+    logging.info("Return code: %d", proc.returncode)
+    
+    if proc.returncode != 0:
         print("Error running this command:", command, file=sys.stderr)
-        print("Return code:", completed_process.returncode, file=sys.stderr)
+        print("Return code:", proc.returncode, file=sys.stderr)
         print(
-            "Output from stdout:", completed_process.stdout, sep="\n", file=sys.stderr
+            "Output from stdout:", proc.stdout, sep="\n", file=sys.stderr
         )
         print(
-            "Output from stderr:", completed_process.stderr, sep="\n", file=sys.stderr
+            "Output from stderr:", proc.stderr, sep="\n", file=sys.stderr
         )
-        raise Exception("Error in system call. Cannot continue")
+        raise Exception("Error in system call (exit code %d). Cannot continue",
+                        proc.returncode)
 
-    logging.info(f"stdout:\n{completed_process.stdout.rstrip()}")
-    logging.info(f"stderr:\n{completed_process.stderr.rstrip()}")
-    return completed_process
+    logging.info("stdout:\n%s", proc.stdout)
+    logging.info("stderr:\n%s", proc.stderr)
+    
+    return proc 
 
 
-def md5(filename):
+def md5(filename: str) -> str:
     """Given a file, returns a string that is the md5 sum of the file"""
     # see https://stackoverflow.com/questions/3431825/generating-an-md5-checksum-of-a-file
     hash_md5 = hashlib.md5()
@@ -52,7 +86,7 @@ def md5(filename):
     return hash_md5.hexdigest()
 
 
-def load_md5_from_file(filename):
+def load_md5_from_file(filename: str) -> str:
     """Loads md5 from file, where could have been made my 'md5' on a mac,
     or 'md5sum' in linux. Assumes just one md5 in the file - only looks at
     the first line"""
@@ -79,7 +113,7 @@ def load_md5_from_file(filename):
     return md5sum
 
 
-def rsync_and_md5(old_name, new_name, md5sum=None):
+def rsync_and_md5(old_name: str, new_name: str, md5sum: str = None) -> str:
     """Copies a file from old_name to new_name using rsync.
     Double-checks the copy was successful using md5. Returns md5.
     If you already know the md5 of the file, then save time
@@ -103,7 +137,7 @@ def rsync_and_md5(old_name, new_name, md5sum=None):
         return md5sum
 
 
-def date_string_from_file_mtime(filename):
+def date_string_from_file_mtime(filename: str) -> str:
     """Returns a string in the form YYYYMMDD of the last modification
     date of a file"""
     try:
@@ -115,13 +149,13 @@ def date_string_from_file_mtime(filename):
     return d.isoformat().split("T")[0].replace("-", "")
 
 
-def make_empty_file(filename):
+def make_empty_file(filename: str) -> None:
     """Makes empty file. Will overwrite if already exists"""
     with open(filename, "w"):
         pass
 
 
-def sam_record_count(filename):
+def sam_record_count(filename: str) -> int:
     """Returns number of sam records in file"""
     count = 0
     with open(filename) as f:
@@ -131,7 +165,7 @@ def sam_record_count(filename):
     return count
 
 
-def vcf_has_records(filename):
+def vcf_has_records(filename: str) -> bool:
     """Returns true if there is at least 1 record in VCF file"""
     with open(filename) as f:
         for line in f:
@@ -140,7 +174,7 @@ def vcf_has_records(filename):
     return False
 
 
-def file_has_at_least_one_line(filename):
+def file_has_at_least_one_line(filename: str) -> bool:
     """Returns true if there is at least 1 line in the file. Can be gzipped"""
     f = pyfastaq.utils.open_file_read(filename)
     has_line = any(f)
