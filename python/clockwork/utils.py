@@ -7,31 +7,37 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
+from typing import Any
 
 import pyfastaq
 
 
-def decode(x: str | bytes) -> str:
+def decode(x: Any | bytes) -> Any | str:
+    """Attempt to decode value, returning itself if cannot"""
     try:
         s = x.decode()
     except:
         return x
     return s
 
-    
-def syscall(command: str | list[str], **run_kws) -> subprocess.CompletedProcess:
+
+def syscall(command: str | Sequence, **run_kws) -> subprocess.CompletedProcess:
     """Run command via subprocess.run
-    
+
     Parameters
     ---------
-    command: str or list of strings. Passed to subprocess.run
+    command: str or list of arguments. Passed to subprocess.run
     **run_kws: Additonal kws to pass to subprocess.run. Defaults:
-        - stderr: subprocess.PIPE
-        - stdout: subprocess.PIPE
-        - universal_newlines: True
         - capture_output: True
         - text: True
-    
+        - check: True (to raise subprocess.CalledProcessError)
+
+        .. version:
+            (As of Python v3.7) 'text' is an alias of 'universal_newlines=True'
+            with decoding. 'capture_output' is an 'alias' of 'stdout=PIPE' plus
+            'stderr=PIPE'.
+
     Returns
     -------
     CompletedProcess
@@ -40,40 +46,44 @@ def syscall(command: str | list[str], **run_kws) -> subprocess.CompletedProcess:
     logging.info("Run command: %s", str(command))
 
     if isinstance(command, str):
-        command = shlex.split(command)
-    
+        cmd_args = shlex.split(command)
+    else:
+        cmd_args = [str(x) for x in command]
+
     # path of program. See python subprocess.Popen doc for details
-    command[0] = shutil.which(command[0])
-    logging.debug("Program: %s", command[0])
-
+    prog = shutil.which(cmd_args[0])
+    
+    if prog is None:
+        logging.error("Program not found: %s", prog)
+        raise ValueError(f"Program not found {prog}")
+    
+    cmd_args[0] = prog
+    
+    logging.debug("Program: %s", cmd_args[0])
+    
     # set defaults
-    run_kws = dict(stderr=subprocess.PIPE,
-                   stdout=subprocess.PIPE,
-                   capture_output=True,
-                   text=True,
-                   universal_newlines=True,
-                   ) | run_kws
+    run_kws = dict(capture_output=True, text=True) | run_kws
 
-    proc = subprocess.run(command, **run_kws)
-        
-    logging.info("Return code: %d", proc.returncode)
-    
-    if proc.returncode != 0:
-        print("Error running this command:", command, file=sys.stderr)
-        print("Return code:", proc.returncode, file=sys.stderr)
-        print(
-            "Output from stdout:", proc.stdout, sep="\n", file=sys.stderr
-        )
-        print(
-            "Output from stderr:", proc.stderr, sep="\n", file=sys.stderr
-        )
-        raise Exception("Error in system call (exit code %d). Cannot continue",
-                        proc.returncode)
+    try:
+        proc = subprocess.run(cmd_args, **run_kws)
 
-    logging.info("stdout:\n%s", proc.stdout)
-    logging.info("stderr:\n%s", proc.stderr)
-    
-    return proc 
+    except subprocess.CalledProcessError as error:
+
+        print(
+            f">>> Exited with code {error.returncode} for command {command}",
+            *(f"stdout:  {s}" for s in '\n'.split(decode(proc.stdout))),
+            *(f"stderr:  {s}" for s in '\n'.split(decode(proc.stderr))),
+            sep="\n",
+            file=sys.stderr,
+        )
+        logging.error("Return code: %d", error.returncode)
+        raise error
+
+    # success
+    logging.info("stdout:\n%s", decode(proc.stdout))
+    logging.info("stderr:\n%s", decode(proc.stderr))
+
+    return proc
 
 
 def md5(filename: str) -> str:
