@@ -44,25 +44,26 @@ def syscall(command: str | Sequence, **run_kws) -> subprocess.CompletedProcess:
         The run process
     """
     logging.info("Run command: %s", str(command))
+    if not run_kws.get("shell", False):
 
-    if isinstance(command, str):
-        cmd_args = shlex.split(command)
-    else:
-        cmd_args = [str(x) for x in command]
+        if isinstance(command, str):
+            cmd_args = shlex.split(command)
+        else:
+            cmd_args = [str(x) for x in command]
 
-    # path of program. See python subprocess.Popen doc for details
-    prog = shutil.which(cmd_args[0])
+        # path of program. See python subprocess.Popen doc for details
+        prog = shutil.which(cmd_args[0])
+        
+        if prog is None:
+            logging.error("Program not found: %s", prog)
+            raise ValueError(f"Program not found {prog}")
+        
+        cmd_args[0] = prog
     
-    if prog is None:
-        logging.error("Program not found: %s", prog)
-        raise ValueError(f"Program not found {prog}")
-    
-    cmd_args[0] = prog
-    
-    logging.debug("Program: %s", cmd_args[0])
+        logging.debug("Program: %s", cmd_args[0])
     
     # set defaults
-    run_kws = dict(capture_output=True, text=True) | run_kws
+    run_kws = dict(capture_output=True, text=True, check=True) | run_kws
 
     try:
         proc = subprocess.run(cmd_args, **run_kws)

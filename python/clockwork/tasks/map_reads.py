@@ -9,7 +9,9 @@ def run(options):
     reads2_list = [
         filename for i, filename in enumerate(options.reads_files) if i % 2 != 0
     ]
-    assert len(reads1_list) == len(reads2_list)
+    assert len(reads1_list) == len(reads2_list), \
+        f"Number of reads1 files ({len(reads1_list)}) and reads2 ({len(reads2_list)}) files don't match"
+        
     read_map.map_reads_set(
         options.ref_fasta,
         reads1_list,

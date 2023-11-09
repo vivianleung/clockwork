@@ -6,7 +6,15 @@ from clockwork import fqtools, picard, utils
 
 
 def map_reads(
-    ref_fasta, reads1, reads2, outfile, rmdup=False, markdup=False, read_group=None, threads=1, minimap2_preset="sr",
+    ref_fasta: str,
+    reads1: str,
+    reads2: str,
+    outfile: str,
+    rmdup: bool = False,
+    markdup: bool = False,
+    read_group: tuple[int, str] = None,
+    threads: int = 1,
+    minimap2_preset: str = "sr",
 ):
     """Maps reads with minimap2. By default, outputs SAM file in input read order.
     rmdup=True => remove duplicates using samtools rmdup. Final output is sorted bam
@@ -59,6 +67,7 @@ def map_reads(
             reads1,
             reads2,
             r""" | awk '/^@/ || !(and($2,256) || and($2,2048))' """,  # remove secondary and supplementary alignments (but keep header)
+            
             ">",
             sam_file,
         ]
@@ -66,10 +75,10 @@ def map_reads(
 
     try:
         utils.syscall(cmd)
-    except:
+    except Exception as error:
         if rmdup or markdup:
             shutil.rmtree(tmpdir)
-        raise Exception("Error running BWA MEM: " + cmd)
+        raise Exception("Error running BWA MEM: " + cmd) from error
 
     number_in_sam = utils.sam_record_count(sam_file)
     if expected_read_count != number_in_sam:
@@ -89,23 +98,23 @@ def map_reads(
 
         try:
             utils.syscall(cmd)
-        except:
+        except Exception as error:
             shutil.rmtree(tmpdir)
-            raise Exception("Error running samtools sort: " + cmd)
+            raise Exception("Error running samtools sort: " + cmd) from error
 
         if rmdup:
             cmd = "samtools rmdup " + sorted_bam + " " + outfile
             try:
                 utils.syscall(cmd)
-            except:
+            except Exception as error:
                 shutil.rmtree(tmpdir)
-                raise Exception("Error running samtools rmdup: " + cmd)
+                raise Exception("Error running samtools rmdup: " + cmd) from error
         else:
             try:
                 picard.mark_duplicates(sorted_bam, outfile)
-            except:
+            except Exception as error:
                 shutil.rmtree(tmpdir)
-                raise Exception("Error running picard mark_duplicates " + cmd)
+                raise Exception("Error running picard mark_duplicates " + cmd) from error
 
         shutil.rmtree(tmpdir)
 
@@ -128,12 +137,14 @@ def map_reads_set(
     )
     outfiles = []
 
-    for i in range(len(reads1_list)):
+    for i, (reads1, reads2) in enumerate(zip(reads1_list, reads2_list)):
+        
+        
         outfiles.append(os.path.join(tmpdir, "map." + str(i)))
         map_reads(
             ref_fasta,
-            reads1_list[i],
-            reads2_list[i],
+            reads1,
+            reads2,
             outfiles[-1],
             rmdup=rmdup,
             markdup=markdup,
